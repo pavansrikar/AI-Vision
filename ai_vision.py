@@ -1,207 +1,165 @@
 import streamlit as st
 from PIL import Image
-import requests
-import base64
-import io
-import simplejson as json  # Instead of jsonlib
+import pyttsx3
+import os
+import pytesseract  
+import google.generativeai as genai
+from langchain_google_genai import GoogleGenerativeAI
 
-# Your API key
-API_KEY = "your api key"
+# Set Tesseract OCR path
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-# Google Vision API and Text-to-Speech URLs
-VISION_URL = f"https://vision.googleapis.com/v1/images:annotate?key={API_KEY}"
-TTS_URL = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={API_KEY}"
+# Initialize Google Generative AI with API Key
+f = open(r"C:\Users\mahalakshmi\Downloads\gemini_key.txt")
 
-# Set the page layout and custom title with emoji
-st.set_page_config(
-    page_title="AI-Powered Assistance",
-    page_icon="👁️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+GEMINI_API_KEY = f.read()
+os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
 
-# Custom CSS for styling
-st.markdown("""
+llm = GoogleGenerativeAI(model="gemini-1.5-pro", api_key=GEMINI_API_KEY)
+
+# Initialize Text-to-Speech engine
+engine = pyttsx3.init() 
+
+
+
+
+ #st.set_page_config(page_title="VisionAssist", layout="wide", page_icon="🧠")
+st.markdown(
+    """
     <style>
-    .main-title {
-        font-size: 2.5rem;
-        color: #4A90E2;
+     .main-title {
+        font-size: 48px;
+         font-weight: bold;
+         text-align: center;
+         color: #FFFFFF;
+         margin-top: -20px;
+     }
+    .subtitle {
+        font-size: 18px;
+        color: #808080;
         text-align: center;
-        margin-bottom: 1rem;
+        margin-bottom: 20px;
     }
-    .description {
-        font-size: 1.2rem;
-        color: #555555;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .button-style {
-        display: block;
-        margin: 0 auto;
-        width: 100%;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        padding: 10px;
-        font-size: 1rem;
-        cursor: pointer;
-        border-radius: 5px;
-    }
-    .button-style:hover {
-        background-color: #45a049;
+    .feature-header {
+        font-size: 24px;
+        color: #333;
+        font-weight: bold;
     }
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-# App title and description
-st.markdown('<div class="main-title">AI-Powered Assistance for Visually Impaired Individuals</div>', unsafe_allow_html=True)
-st.markdown('<div class="description">Enhancing accessibility with scene understanding, text-to-speech, and personalized guidance.</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">AI VisionAssist 👁️</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">AI for Scene Understanding, Text Extraction & Speech for the Visually Impaired 🗣️</div>', unsafe_allow_html=True)
 
-# File uploader
-uploaded_image = st.file_uploader("📤 Upload an Image (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
+# Set up the sidebar for "ℹ️ About" section with concise description
+st.sidebar.title("ℹ️ About")
+st.sidebar.markdown(
+    """
+    📌 **Features**
+    - 🔍 **Describe Scene**: Get AI insights about the image, including objects and suggestions.
+    - 📝 **Extract Text**: Extract visible text using OCR.
+    - 🔊 **Text-to-Speech**: Hear the extracted text aloud.
 
-if uploaded_image:
-    col1, col2 = st.columns(2)
+    💡 **How it helps**:
+    Assists visually impaired users by providing scene descriptions, text extraction, and speech.
 
-    # Display uploaded image in a column
-    with col1:
-        st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
+    🤖 **Powered by**:
+    - **Google Gemini API** for scene understanding.
+    - **Tesseract OCR** for text extraction.
+    - **pyttsx3** for text-to-speech.
+    """
+)
 
-    # Convert the image to base64 for API requests
-    image = Image.open(uploaded_image)
-    image_byte_array = io.BytesIO()
-    image.save(image_byte_array, format='PNG')
-    image_base64 = base64.b64encode(image_byte_array.getvalue()).decode()
+# Text box below the sidebar description
+st.sidebar.text_area("📜 Instructions", "Upload an image to start. Choose a feature to interact with:  1 Describe the Scene, 2 Extract Text, 3 Listen to it")
 
-    with col2:
-        st.markdown("### Features")
-        st.write("Choose one of the options below to process the uploaded image:")
 
-        # Scene Understanding
-        if st.button("🔍 Generate Scene Description", key="scene"):
-            st.write("Analyzing the image for scene understanding...")
-            vision_payload = {
-                "requests": [
-                    {
-                        "image": {"content": image_base64},
-                        "features": [{"type": "LABEL_DETECTION", "maxResults": 10}],
-                    }
-                ]
+# Functions for functionality
+def extract_text_from_image(image):
+    """Extracts text from the given image using OCR."""
+    return pytesseract.image_to_string(image)
+
+def text_to_speech(text):
+    """Converts the given text to speech."""
+    engine.say(text)
+    engine.runAndWait()
+
+def generate_scene_description(input_prompt, image_data):
+    """Generates a scene description using Google Generative AI."""
+    model = genai.GenerativeModel("gemini-1.5-pro")
+    response = model.generate_content([input_prompt, image_data[0]])
+    return response.text
+
+def input_image_setup(uploaded_file):
+    """Prepares the uploaded image for processing."""
+    if uploaded_file is not None:
+        bytes_data = uploaded_file.getvalue()
+        image_parts = [
+            {
+                "mime_type": uploaded_file.type,
+                "data": bytes_data,
             }
+        ]
+        return image_parts
+    else:
+        raise FileNotFoundError("No file uploaded.")
 
-            response = requests.post(VISION_URL, json=vision_payload)
+# Upload Image Section
+st.markdown("<h3 class='feature-header'>📤 Upload an Image</h3>", unsafe_allow_html=True)
+uploaded_file = st.file_uploader("Drag and drop or browse an image (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
+if uploaded_file:
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-            if response.status_code == 200:
-                labels = response.json()["responses"][0].get("labelAnnotations", [])
-                if labels:
-                    st.success("### Scene Description")
-                    st.write(", ".join(label["description"] for label in labels))
-                else:
-                    st.error("No scene description could be generated.")
+# Buttons Section
+st.markdown("<h3 class='feature-header'>⚙️ Features</h3>", unsafe_allow_html=True)
+col1, col2, col3 = st.columns(3)
+
+scene_button = col1.button("🔍 Describe Scene")
+ocr_button = col2.button("📝 Extract Text")
+tts_button = col3.button("🔊 Text-to-Speech")
+
+# Input Prompt for Scene Understanding
+input_prompt = """
+You are an AI assistant helping visually impaired individuals by describing the scene in the image. Provide:
+1. List of items detected in the image with their purpose.
+2. Overall description of the image.
+3. Suggestions for actions or precautions for the visually impaired.
+"""
+
+# Process user interactions
+if uploaded_file:
+    image_data = input_image_setup(uploaded_file)
+
+    if scene_button:
+        with st.spinner("Generating scene description..."):
+            response = generate_scene_description(input_prompt, image_data)
+            st.markdown("<h3 class='feature-header'>🔍 Scene Description</h3>", unsafe_allow_html=True)
+            st.write(response)
+
+    if ocr_button:
+        with st.spinner("Extracting text from the image..."):
+            text = extract_text_from_image(image)
+            st.markdown("<h3 class='feature-header'>📝 Extracted Text</h3>", unsafe_allow_html=True)
+            st.text_area("Extracted Text", text, height=150)
+
+    if tts_button:
+        with st.spinner("Converting text to speech..."):
+            text = extract_text_from_image(image)
+            if text.strip():
+                text_to_speech(text)
+                st.success("✅ Text-to-Speech Conversion Completed!")
             else:
-                st.error(f"Vision API Error: {response.text}")
+                st.warning("No text found to convert.")
 
-        # Object Detection
-        if st.button("🛠 Detect Objects and Obstacles", key="objects"):
-            st.write("Analyzing the image for objects and obstacles...")
-            vision_payload = {
-                "requests": [
-                    {
-                        "image": {"content": image_base64},
-                        "features": [{"type": "OBJECT_LOCALIZATION", "maxResults": 10}],
-                    }
-                ]
-            }
-
-            response = requests.post(VISION_URL, json=vision_payload)
-
-            if response.status_code == 200:
-                objects = response.json()["responses"][0].get("localizedObjectAnnotations", [])
-                if objects:
-                    st.success("### Detected Objects and Obstacles")
-                    for obj in objects:
-                        st.write(f"- **{obj['name']}** (Confidence: {obj['score']:.2f})")
-                else:
-                    st.error("No objects or obstacles detected.")
-            else:
-                st.error(f"Vision API Error: {response.text}")
-
-        # Text Extraction and Text-to-Speech
-        if st.button("🎙 Convert Text to Speech", key="tts"):
-            st.write("Extracting text from the image...")
-            text_payload = {
-                "requests": [
-                    {
-                        "image": {"content": image_base64},
-                        "features": [{"type": "TEXT_DETECTION"}],
-                    }
-                ]
-            }
-
-            text_response = requests.post(VISION_URL, json=text_payload)
-
-            if text_response.status_code == 200:
-                annotations = text_response.json()["responses"][0].get("textAnnotations", [])
-                if annotations:
-                    extracted_text = annotations[0]["description"]
-                    st.write("### Extracted Text")
-                    st.text(extracted_text)
-
-                    # Convert the extracted text to speech
-                    st.write("Converting text to speech...")
-                    tts_payload = {
-                        "input": {"text": extracted_text},
-                        "voice": {"languageCode": "en-US", "ssmlGender": "NEUTRAL"},
-                        "audioConfig": {"audioEncoding": "MP3"},
-                    }
-
-                    tts_response = requests.post(TTS_URL, json=tts_payload)
-                    if tts_response.status_code == 200:
-                        audio_content = tts_response.json().get("audioContent")
-                        if audio_content:
-                            audio_bytes = base64.b64decode(audio_content)
-                            st.audio(audio_bytes, format="audio/mp3")
-                        else:
-                            st.error("No audio content received from the Text-to-Speech API.")
-                    else:
-                        st.error(f"Text-to-Speech API Error: {tts_response.text}")
-                else:
-                    st.error("No text found in the image.")
-            else:
-                st.error(f"Vision API Error: {text_response.text}")
-
-        # Personalized Guidance
-        if st.button("🤖 Provide Personalized Guidance", key="guidance"):
-            st.write("Analyzing the image for personalized guidance...")
-            text_payload = {
-                "requests": [
-                    {
-                        "image": {"content": image_base64},
-                        "features": [{"type": "TEXT_DETECTION"}],
-                    }
-                ]
-            }
-
-            text_response = requests.post(VISION_URL, json=text_payload)
-
-            if text_response.status_code == 200:
-                annotations = text_response.json()["responses"][0].get("textAnnotations", [])
-                if annotations:
-                    extracted_text = annotations[0]["description"]
-                    st.write("### Recognized Text")
-                    st.text(extracted_text)
-
-                    # Provide contextual guidance
-                    st.write("### Personalized Guidance")
-                    if "expiry" in extracted_text.lower():
-                        st.warning("The image contains expiry information. Check the dates carefully.")
-                    elif "warning" in extracted_text.lower():
-                        st.warning("The image contains a warning label. Exercise caution.")
-                    elif "ingredient" in extracted_text.lower():
-                        st.info("The image contains ingredient information. Review for dietary preferences.")
-                    else:
-                        st.info("No specific guidance detected.")
-                else:
-                    st.error("No text found in the image.")
-            else:
-                st.error(f"Vision API Error: {text_response.text}")
+st.sidebar.markdown(
+    """
+    <hr>
+    <footer style="text-align:center;">
+        <p>Powered by <strong>Google Gemini API</strong>  | ©️  Pavan Srikar | Built with ❤️ using Streamlit</p>
+    </footer>
+    """,
+    unsafe_allow_html=True,
+)
